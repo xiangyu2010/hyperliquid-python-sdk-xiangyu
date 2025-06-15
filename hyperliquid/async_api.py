@@ -61,9 +61,20 @@ class AsyncAPI:
 
 if __name__ == '__main__':
     import asyncio
+    import time
     async def main():
+        start=time.time()
         async with AsyncAPI() as api:
-            payload={"type":"referral","user":"0x02e59af6d9fbf6bf0490dd9de78909027d7878ec"}
-            print(await api.post('/info', payload=payload))
+
+            payload={"type":"referral","user":"0x5b5d51203a0f9079f8aeb098a6523a13f298c060"}
+            # print(await api.post('/info', payload=payload))
+            t1=api.post('/info', payload=payload)
+            t2=api.post('/info', payload=payload)
+            t3=api.post('/info', payload=payload)
+            t4=api.post('/info', payload=payload)
+            t5=api.post('/info', payload=payload)
+            result=await asyncio.gather(t1,t2,t3,t4,t5)
+            print(result)
+            print(time.time()-start)
 
     asyncio.run(main())

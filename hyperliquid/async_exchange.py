@@ -5,7 +5,7 @@ import secrets
 import eth_account
 from eth_account.signers.local import LocalAccount
 
-from hyperliquid.api import API
+from hyperliquid.async_api import AsyncAPI
 from hyperliquid.info import Info
 from hyperliquid.utils.constants import MAINNET_API_URL
 from hyperliquid.utils.signing import (
@@ -47,7 +47,7 @@ from hyperliquid.utils.types import (
 )
 
 
-class Exchange(API):
+class Exchange(AsyncAPI):
     # Default Max Slippage for Market Orders 5%
     DEFAULT_SLIPPAGE = 0.05
 
@@ -68,7 +68,7 @@ class Exchange(API):
         self.info = Info(base_url, True, meta, spot_meta, perp_dexs)
         self.expires_after: Optional[int] = None
 
-    def _post_action(self, action, signature, nonce):
+    async def _post_action(self, action, signature, nonce):
         payload = {
             "action": action,
             "nonce": nonce,
@@ -77,7 +77,7 @@ class Exchange(API):
             "expiresAfter": self.expires_after,
         }
         logging.debug(payload)
-        return self.post("/exchange", payload)
+        return await self.post("/exchange", payload)
 
     def _slippage_price(
         self,
@@ -106,7 +106,7 @@ class Exchange(API):
     def set_expires_after(self, expires_after: Optional[int]) -> None:
         self.expires_after = expires_after
 
-    def order(
+    async def order(
         self,
         name: str,
         is_buy: bool,
@@ -127,9 +127,9 @@ class Exchange(API):
         }
         if cloid:
             order["cloid"] = cloid
-        return self.bulk_orders([order], builder)
+        return await self.bulk_orders([order], builder)
 
-    def bulk_orders(self, order_requests: List[OrderRequest], builder: Optional[BuilderInfo] = None) -> Any:
+    async def bulk_orders(self, order_requests: List[OrderRequest], builder: Optional[BuilderInfo] = None) -> Any:
         order_wires: List[OrderWire] = [
             order_request_to_order_wire(order, self.info.name_to_asset(order["coin"])) for order in order_requests
         ]
@@ -148,13 +148,13 @@ class Exchange(API):
             self.base_url == MAINNET_API_URL,
         )
 
-        return self._post_action(
+        return await self._post_action(
             order_action,
             signature,
             timestamp,
         )
 
-    def modify_order(
+    async def modify_order(
         self,
         oid: OidOrCloid,
         name: str,
@@ -177,9 +177,9 @@ class Exchange(API):
                 "cloid": cloid,
             },
         }
-        return self.bulk_modify_orders_new([modify])
+        return await self.bulk_modify_orders_new([modify])
 
-    def bulk_modify_orders_new(self, modify_requests: List[ModifyRequest]) -> Any:
+    async def bulk_modify_orders_new(self, modify_requests: List[ModifyRequest]) -> Any:
         timestamp = get_timestamp_ms()
         modify_wires = [
             {
@@ -203,13 +203,13 @@ class Exchange(API):
             self.base_url == MAINNET_API_URL,
         )
 
-        return self._post_action(
+        return await self._post_action(
             modify_action,
             signature,
             timestamp,
         )
 
-    def market_open(
+    async def market_open(
         self,
         name: str,
         is_buy: bool,
@@ -222,11 +222,11 @@ class Exchange(API):
         # Get aggressive Market Price
         px = self._slippage_price(name, is_buy, slippage, px)
         # Market Order is an aggressive Limit Order IoC
-        return self.order(
+        return await self.order(
             name, is_buy, sz, px, order_type={"limit": {"tif": "Ioc"}}, reduce_only=False, cloid=cloid, builder=builder
         )
 
-    def market_close(
+    async def market_close(
         self,
         coin: str,
         sz: Optional[float] = None,
@@ -252,24 +252,24 @@ class Exchange(API):
             # Get aggressive Market Price
             px = self._slippage_price(coin, is_buy, slippage, px)
             # Market Order is an aggressive Limit Order IoC
-            return self.order(
-                coin,
-                is_buy,
-                sz,
-                px,
-                order_type={"limit": {"tif": "Ioc"}},
-                reduce_only=True,
-                cloid=cloid,
-                builder=builder,
-            )
+        return await self.order(
+            coin,
+            is_buy,
+            sz,
+            px,
+            order_type={"limit": {"tif": "Ioc"}},
+            reduce_only=True,
+            cloid=cloid,
+            builder=builder,
+        )
 
-    def cancel(self, name: str, oid: int) -> Any:
-        return self.bulk_cancel([{"coin": name, "oid": oid}])
+    async def cancel(self, name: str, oid: int) -> Any:
+        return await self.bulk_cancel([{"coin": name, "oid": oid}])
 
-    def cancel_by_cloid(self, name: str, cloid: Cloid) -> Any:
-        return self.bulk_cancel_by_cloid([{"coin": name, "cloid": cloid}])
+    async def cancel_by_cloid(self, name: str, cloid: Cloid) -> Any:
+        return await self.bulk_cancel_by_cloid([{"coin": name, "cloid": cloid}])
 
-    def bulk_cancel(self, cancel_requests: List[CancelRequest]) -> Any:
+    async def bulk_cancel(self, cancel_requests: List[CancelRequest]) -> Any:
         timestamp = get_timestamp_ms()
         cancel_action = {
             "type": "cancel",
@@ -290,13 +290,13 @@ class Exchange(API):
             self.base_url == MAINNET_API_URL,
         )
 
-        return self._post_action(
+        return await self._post_action(
             cancel_action,
             signature,
             timestamp,
         )
 
-    def bulk_cancel_by_cloid(self, cancel_requests: List[CancelByCloidRequest]) -> Any:
+    async def bulk_cancel_by_cloid(self, cancel_requests: List[CancelByCloidRequest]) -> Any:
         timestamp = get_timestamp_ms()
 
         cancel_action = {
@@ -318,13 +318,13 @@ class Exchange(API):
             self.base_url == MAINNET_API_URL,
         )
 
-        return self._post_action(
+        return await self._post_action(
             cancel_action,
             signature,
             timestamp,
         )
 
-    def schedule_cancel(self, time: Optional[int]) -> Any:
+    async def schedule_cancel(self, time: Optional[int]) -> Any:
         """Schedules a time (in UTC millis) to cancel all open orders. The time must be at least 5 seconds after the current time.
         Once the time comes, all open orders will be canceled and a trigger count will be incremented. The max number of triggers
         per day is 10. This trigger count is reset at 00:00 UTC.
@@ -346,13 +346,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             schedule_cancel_action,
             signature,
             timestamp,
         )
 
-    def update_leverage(self, leverage: int, name: str, is_cross: bool = True) -> Any:
+    async def update_leverage(self, leverage: int, name: str, is_cross: bool = True) -> Any:
         timestamp = get_timestamp_ms()
         update_leverage_action = {
             "type": "updateLeverage",
@@ -368,13 +368,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             update_leverage_action,
             signature,
             timestamp,
         )
 
-    def update_isolated_margin(self, amount: float, name: str) -> Any:
+    async def update_isolated_margin(self, amount: float, name: str) -> Any:
         timestamp = get_timestamp_ms()
         amount = float_to_usd_int(amount)
         update_isolated_margin_action = {
@@ -391,13 +391,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             update_isolated_margin_action,
             signature,
             timestamp,
         )
 
-    def set_referrer(self, code: str) -> Any:
+    async def set_referrer(self, code: str) -> Any:
         timestamp = get_timestamp_ms()
         set_referrer_action = {
             "type": "setReferrer",
@@ -411,13 +411,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             set_referrer_action,
             signature,
             timestamp,
         )
 
-    def create_sub_account(self, name: str) -> Any:
+    async def create_sub_account(self, name: str) -> Any:
         timestamp = get_timestamp_ms()
         create_sub_account_action = {
             "type": "createSubAccount",
@@ -431,13 +431,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             create_sub_account_action,
             signature,
             timestamp,
         )
 
-    def usd_class_transfer(self, amount: float, to_perp: bool) -> Any:
+    async def usd_class_transfer(self, amount: float, to_perp: bool) -> Any:
         timestamp = get_timestamp_ms()
         str_amount = str(amount)
         if self.vault_address:
@@ -450,13 +450,13 @@ class Exchange(API):
             "nonce": timestamp,
         }
         signature = sign_usd_class_transfer_action(self.wallet, action, self.base_url == MAINNET_API_URL)
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def perp_dex_class_transfer(self, dex: str, token: str, amount: float, to_perp: bool) -> Any:
+    async def perp_dex_class_transfer(self, dex: str, token: str, amount: float, to_perp: bool) -> Any:
         timestamp = get_timestamp_ms()
         str_amount = str(amount)
         if self.vault_address:
@@ -471,13 +471,13 @@ class Exchange(API):
             "nonce": timestamp,
         }
         signature = sign_perp_dex_class_transfer_action(self.wallet, action, self.base_url == MAINNET_API_URL)
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def sub_account_transfer(self, sub_account_user: str, is_deposit: bool, usd: int) -> Any:
+    async def sub_account_transfer(self, sub_account_user: str, is_deposit: bool, usd: int) -> Any:
         timestamp = get_timestamp_ms()
         sub_account_transfer_action = {
             "type": "subAccountTransfer",
@@ -493,13 +493,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             sub_account_transfer_action,
             signature,
             timestamp,
         )
 
-    def sub_account_spot_transfer(self, sub_account_user: str, is_deposit: bool, token: str, amount: float) -> Any:
+    async def sub_account_spot_transfer(self, sub_account_user: str, is_deposit: bool, token: str, amount: float) -> Any:
         timestamp = get_timestamp_ms()
         sub_account_transfer_action = {
             "type": "subAccountSpotTransfer",
@@ -516,13 +516,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             sub_account_transfer_action,
             signature,
             timestamp,
         )
 
-    def vault_usd_transfer(self, vault_address: str, is_deposit: bool, usd: int) -> Any:
+    async def vault_usd_transfer(self, vault_address: str, is_deposit: bool, usd: int) -> Any:
         timestamp = get_timestamp_ms()
         vault_transfer_action = {
             "type": "vaultTransfer",
@@ -532,24 +532,24 @@ class Exchange(API):
         }
         is_mainnet = self.base_url == MAINNET_API_URL
         signature = sign_l1_action(self.wallet, vault_transfer_action, None, timestamp, self.expires_after, is_mainnet)
-        return self._post_action(
+        return await self._post_action(
             vault_transfer_action,
             signature,
             timestamp,
         )
 
-    def usd_transfer(self, amount: float, destination: str) -> Any:
+    async def usd_transfer(self, amount: float, destination: str) -> Any:
         timestamp = get_timestamp_ms()
         action = {"destination": destination, "amount": str(amount), "time": timestamp, "type": "usdSend"}
         is_mainnet = self.base_url == MAINNET_API_URL
         signature = sign_usd_transfer_action(self.wallet, action, is_mainnet)
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_transfer(self, amount: float, destination: str, token: str) -> Any:
+    async def spot_transfer(self, amount: float, destination: str, token: str) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "destination": destination,
@@ -560,13 +560,13 @@ class Exchange(API):
         }
         is_mainnet = self.base_url == MAINNET_API_URL
         signature = sign_spot_transfer_action(self.wallet, action, is_mainnet)
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def token_delegate(self, validator: str, wei: int, is_undelegate: bool) -> Any:
+    async def token_delegate(self, validator: str, wei: int, is_undelegate: bool) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "validator": validator,
@@ -577,24 +577,24 @@ class Exchange(API):
         }
         is_mainnet = self.base_url == MAINNET_API_URL
         signature = sign_token_delegate_action(self.wallet, action, is_mainnet)
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def withdraw_from_bridge(self, amount: float, destination: str) -> Any:
+    async def withdraw_from_bridge(self, amount: float, destination: str) -> Any:
         timestamp = get_timestamp_ms()
         action = {"destination": destination, "amount": str(amount), "time": timestamp, "type": "withdraw3"}
         is_mainnet = self.base_url == MAINNET_API_URL
         signature = sign_withdraw_from_bridge_action(self.wallet, action, is_mainnet)
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def approve_agent(self, name: Optional[str] = None) -> Tuple[Any, str]:
+    async def approve_agent(self, name: Optional[str] = None) -> Tuple[Any, str]:
         agent_key = "0x" + secrets.token_hex(32)
         account = eth_account.Account.from_key(agent_key)
         timestamp = get_timestamp_ms()
@@ -610,7 +610,7 @@ class Exchange(API):
             del action["agentName"]
 
         return (
-            self._post_action(
+            await self._post_action(
                 action,
                 signature,
                 timestamp,
@@ -618,14 +618,14 @@ class Exchange(API):
             agent_key,
         )
 
-    def approve_builder_fee(self, builder: str, max_fee_rate: str) -> Any:
+    async def approve_builder_fee(self, builder: str, max_fee_rate: str) -> Any:
         timestamp = get_timestamp_ms()
 
         action = {"maxFeeRate": max_fee_rate, "builder": builder, "nonce": timestamp, "type": "approveBuilderFee"}
         signature = sign_approve_builder_fee(self.wallet, action, self.base_url == MAINNET_API_URL)
-        return self._post_action(action, signature, timestamp)
+        return await self._post_action(action, signature, timestamp)
 
-    def convert_to_multi_sig_user(self, authorized_users: List[str], threshold: int) -> Any:
+    async def convert_to_multi_sig_user(self, authorized_users: List[str], threshold: int) -> Any:
         timestamp = get_timestamp_ms()
         authorized_users = sorted(authorized_users)
         signers = {
@@ -638,13 +638,13 @@ class Exchange(API):
             "nonce": timestamp,
         }
         signature = sign_convert_to_multi_sig_user_action(self.wallet, action, self.base_url == MAINNET_API_URL)
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_register_token(
+    async def spot_deploy_register_token(
         self, token_name: str, sz_decimals: int, wei_decimals: int, max_gas: int, full_name: str
     ) -> Any:
         timestamp = get_timestamp_ms()
@@ -664,13 +664,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_user_genesis(
+    async def spot_deploy_user_genesis(
         self, token: int, user_and_wei: List[Tuple[str, str]], existing_token_and_wei: List[Tuple[int, str]]
     ) -> Any:
         timestamp = get_timestamp_ms()
@@ -690,13 +690,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_enable_freeze_privilege(self, token: int) -> Any:
+    async def spot_deploy_enable_freeze_privilege(self, token: int) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "type": "spotDeploy",
@@ -712,13 +712,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_freeze_user(self, token: int, user: str, freeze: bool) -> Any:
+    async def spot_deploy_freeze_user(self, token: int, user: str, freeze: bool) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "type": "spotDeploy",
@@ -736,13 +736,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_revoke_freeze_privilege(self, token: int) -> Any:
+    async def spot_deploy_revoke_freeze_privilege(self, token: int) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "type": "spotDeploy",
@@ -758,13 +758,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_genesis(self, token: int, max_supply: str, no_hyperliquidity: bool) -> Any:
+    async def spot_deploy_genesis(self, token: int, max_supply: str, no_hyperliquidity: bool) -> Any:
         timestamp = get_timestamp_ms()
         genesis = {
             "token": token,
@@ -784,13 +784,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_register_spot(self, base_token: int, quote_token: int) -> Any:
+    async def spot_deploy_register_spot(self, base_token: int, quote_token: int) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "type": "spotDeploy",
@@ -806,13 +806,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_register_hyperliquidity(
+    async def spot_deploy_register_hyperliquidity(
         self, spot: int, start_px: float, order_sz: float, n_orders: int, n_seeded_levels: Optional[int]
     ) -> Any:
         timestamp = get_timestamp_ms()
@@ -836,13 +836,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def spot_deploy_set_deployer_trading_fee_share(self, token: int, share: str) -> Any:
+    async def spot_deploy_set_deployer_trading_fee_share(self, token: int, share: str) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "type": "spotDeploy",
@@ -859,13 +859,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def perp_deploy_register_asset(
+    async def perp_deploy_register_asset(
         self,
         dex: str,
         max_gas: Optional[int],
@@ -907,13 +907,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def perp_deploy_set_oracle(
+    async def perp_deploy_set_oracle(
         self,
         dex: str,
         oracle_pxs: Dict[str, str],
@@ -940,19 +940,19 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def c_signer_unjail_self(self) -> Any:
-        return self.c_signer_inner("unjailSelf")
+    async def c_signer_unjail_self(self) -> Any:
+        return await self.c_signer_inner("unjailSelf")
 
-    def c_signer_jail_self(self) -> Any:
-        return self.c_signer_inner("jailSelf")
+    async def c_signer_jail_self(self) -> Any:
+        return await self.c_signer_inner("jailSelf")
 
-    def c_signer_inner(self, variant: str) -> Any:
+    async def c_signer_inner(self, variant: str) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "type": "CSignerAction",
@@ -966,13 +966,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def c_validator_register(
+    async def c_validator_register(
         self,
         node_ip: str,
         name: str,
@@ -1007,13 +1007,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def c_validator_change_profile(
+    async def c_validator_change_profile(
         self,
         node_ip: Optional[str],
         name: Optional[str],
@@ -1044,13 +1044,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def c_validator_unregister(self) -> Any:
+    async def c_validator_unregister(self) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "type": "CValidatorAction",
@@ -1064,13 +1064,13 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
         )
 
-    def multi_sig(self, multi_sig_user, inner_action, signatures, nonce, vault_address=None):
+    async def multi_sig(self, multi_sig_user, inner_action, signatures, nonce, vault_address=None):
         multi_sig_user = multi_sig_user.lower()
         multi_sig_action = {
             "type": "multiSig",
@@ -1091,13 +1091,13 @@ class Exchange(API):
             nonce,
             self.expires_after,
         )
-        return self._post_action(
+        return await self._post_action(
             multi_sig_action,
             signature,
             nonce,
         )
 
-    def use_big_blocks(self, enable: bool) -> Any:
+    async def use_big_blocks(self, enable: bool) -> Any:
         timestamp = get_timestamp_ms()
         action = {
             "type": "evmUserModify",
@@ -1111,7 +1111,7 @@ class Exchange(API):
             self.expires_after,
             self.base_url == MAINNET_API_URL,
         )
-        return self._post_action(
+        return await self._post_action(
             action,
             signature,
             timestamp,
