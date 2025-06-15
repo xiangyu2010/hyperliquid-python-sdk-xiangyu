@@ -16,7 +16,7 @@ SDK for Hyperliquid API trading with Python.
 
 ## Installation
 ```bash
-pip install hyperliquid-python-sdk
+pip install hyperliquid-python-sdk-xiangyu
 ```
 ## Configuration 
 
