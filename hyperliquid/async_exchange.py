@@ -252,16 +252,16 @@ class Exchange(AsyncAPI):
             # Get aggressive Market Price
             px = self._slippage_price(coin, is_buy, slippage, px)
             # Market Order is an aggressive Limit Order IoC
-        return await self.order(
-            coin,
-            is_buy,
-            sz,
-            px,
-            order_type={"limit": {"tif": "Ioc"}},
-            reduce_only=True,
-            cloid=cloid,
-            builder=builder,
-        )
+            return await self.order(
+                coin,
+                is_buy,
+                sz,
+                px,
+                order_type={"limit": {"tif": "Ioc"}},
+                reduce_only=True,
+                cloid=cloid,
+                builder=builder,
+            )
 
     async def cancel(self, name: str, oid: int) -> Any:
         return await self.bulk_cancel([{"coin": name, "oid": oid}])
