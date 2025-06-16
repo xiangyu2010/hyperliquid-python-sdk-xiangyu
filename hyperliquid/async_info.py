@@ -55,7 +55,7 @@ class Info(AsyncAPI):
         if perp_dexs is None:
             perp_dexs = [""]
         else:
-            for i, perp_dex in enumerate(self.perp_dexs()[1:]):
+            for i, perp_dex in enumerate(self.perp_dexs_sync()[1:]):
                 # builder-deployed perp dexs start at 110000
                 perp_dex_to_offset[perp_dex["name"]] = 110000 + i * 10000
 
@@ -64,7 +64,7 @@ class Info(AsyncAPI):
             if perp_dex == "" and meta is not None:
                 self.set_perp_meta(meta, 0)
             else:
-                fresh_meta = self.meta(dex=perp_dex)
+                fresh_meta = self.meta_sync(dex=perp_dex)
                 self.set_perp_meta(fresh_meta, offset)
 
     def set_perp_meta(self, meta: Meta, offset: int) -> Any:
@@ -257,6 +257,24 @@ class Info(AsyncAPI):
             "/info", {"type": "userFillsByTime", "user": address, "startTime": start_time, "endTime": end_time}
         )
 
+    def meta_sync(self, dex: str = "") -> Meta:
+        """Retrieve exchange perp metadata
+
+        POST /info
+
+        Returns:
+            {
+                universe: [
+                    {
+                        name: str,
+                        szDecimals: int
+                    },
+                    ...
+                ]
+            }
+        """
+        return cast(Meta, self.post_sync("/info", {"type": "meta", "dex": dex}))
+
     async def meta(self, dex: str = "") -> Meta:
         """Retrieve exchange perp metadata
 
@@ -309,6 +327,9 @@ class Info(AsyncAPI):
             ]
         """
         return await self.post("/info", {"type": "metaAndAssetCtxs"})
+
+    def perp_dexs_sync(self) -> Any:
+        return self.post_sync("/info", {"type": "perpDexs"})
 
     async def perp_dexs(self) -> Any:
         return await self.post("/info", {"type": "perpDexs"})

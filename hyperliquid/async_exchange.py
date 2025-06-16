@@ -6,7 +6,7 @@ import eth_account
 from eth_account.signers.local import LocalAccount
 
 from hyperliquid.async_api import AsyncAPI
-from hyperliquid.info import Info
+from hyperliquid.async_info import Info
 from hyperliquid.utils.constants import MAINNET_API_URL
 from hyperliquid.utils.signing import (
     CancelByCloidRequest,
@@ -79,7 +79,7 @@ class Exchange(AsyncAPI):
         logging.debug(payload)
         return await self.post("/exchange", payload)
 
-    def _slippage_price(
+    async def _slippage_price(
         self,
         name: str,
         is_buy: bool,
@@ -89,7 +89,8 @@ class Exchange(AsyncAPI):
         coin = self.info.name_to_coin[name]
         if not px:
             # Get midprice
-            px = float(self.info.all_mids()[coin])
+            all_mids = await self.info.all_mids()
+            px = float(all_mids[coin])
 
         asset = self.info.coin_to_asset[coin]
         # spot assets start at 10000
@@ -220,7 +221,7 @@ class Exchange(AsyncAPI):
         builder: Optional[BuilderInfo] = None,
     ) -> Any:
         # Get aggressive Market Price
-        px = self._slippage_price(name, is_buy, slippage, px)
+        px = await self._slippage_price(name, is_buy, slippage, px)
         # Market Order is an aggressive Limit Order IoC
         return await self.order(
             name, is_buy, sz, px, order_type={"limit": {"tif": "Ioc"}}, reduce_only=False, cloid=cloid, builder=builder
@@ -240,7 +241,7 @@ class Exchange(AsyncAPI):
             address = self.account_address
         if self.vault_address:
             address = self.vault_address
-        positions = self.info.user_state(address)["assetPositions"]
+        positions = await self.info.user_state(address)["assetPositions"]
         for position in positions:
             item = position["position"]
             if coin != item["coin"]:
@@ -250,7 +251,7 @@ class Exchange(AsyncAPI):
                 sz = abs(szi)
             is_buy = True if szi < 0 else False
             # Get aggressive Market Price
-            px = self._slippage_price(coin, is_buy, slippage, px)
+            px = await self._slippage_price(coin, is_buy, slippage, px)
             # Market Order is an aggressive Limit Order IoC
             return await self.order(
                 coin,
